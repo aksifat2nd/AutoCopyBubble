@@ -1,4 +1,4 @@
-name: Build 3D AutoCopy APK
+name: Build APK
 
 on:
   push:
@@ -9,57 +9,42 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repo
+      - name: Checkout Code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Download App Source
+      - name: Create Android Project Structure
         run: |
-          git clone https://github.com/aksifat2nd/AutoCopyBubble.git temp_repo || true
           mkdir -p app/src/main/java/com/shiflex/autocopy
           mkdir -p app/src/main/res/values
 
-      - name: Create Basic Gradle Config
-        run: |
-          echo "rootProject.name = 'AutoCopyBubble'" > settings.gradle
+          echo "rootProject.name='AutoCopyBubble'" > settings.gradle
           echo "include ':app'" >> settings.gradle
 
           cat << 'EOF' > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
-              dependencies { classpath 'com.android.tools.build:gradle:8.2.0' }
+              dependencies { classpath 'com.android.tools.build:gradle:7.4.2' }
           }
           allprojects { repositories { google(); mavenCentral() } }
           EOF
 
-          cat << 'EOF' > gradle.properties
-          org.gradle.jvmargs=-Xmx2048m
-          android.useAndroidX=true
-          EOF
-
           cat << 'EOF' > app/build.gradle
-          plugins { id 'com.android.application' }
+          apply plugin: 'com.android.application'
           android {
               namespace 'com.shiflex.autocopy'
-              compileSdk 34
+              compileSdk 33
               defaultConfig {
                   applicationId "com.shiflex.autocopy"
                   minSdk 24
-                  targetSdk 34
+                  targetSdk 33
                   versionCode 1
                   versionName "1.0"
-              }
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
               }
           }
           EOF
@@ -68,9 +53,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-              <uses-permission android:name="android.permission.VIBRATE"/>
-              <application android:label="3D AutoCopy AI" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+              <application android:label="AutoCopy Bubble" android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
@@ -82,52 +65,7 @@ jobs:
           </manifest>
           EOF
 
-      - name: Create Java Classes
-        run: |
-          cd app/src/main/java/com/shiflex/autocopy
-
-          cat << 'EOF' > UIHelper.java
-          package com.shiflex.autocopy;
-          import android.content.Context;
-          import android.graphics.Color;
-          import android.graphics.drawable.GradientDrawable;
-          import android.widget.Toast;
-          public class UIHelper {
-              public static GradientDrawable box(String c1, String c2, int radius) {
-                  GradientDrawable gd = new GradientDrawable(GradientDrawable.Orientation.TL_BR, new int[]{Color.parseColor(c1), Color.parseColor(c2)});
-                  gd.setCornerRadius(radius);
-                  return gd;
-              }
-              public static void toast(Context ctx, String msg) {
-                  Toast.makeText(ctx, msg, Toast.LENGTH_SHORT).show();
-              }
-          }
-          EOF
-
-          cat << 'EOF' > DataStore.java
-          package com.shiflex.autocopy;
-          import android.content.Context;
-          import android.content.SharedPreferences;
-          import java.util.ArrayList;
-          import java.util.List;
-          public class DataStore {
-              private static final String PREF = "Prefs";
-              public static void save(Context ctx, String n, String num) {
-                  ctx.getSharedPreferences(PREF, 0).edit().putString("n", n).putString("num", num).putInt("ni", 0).putInt("nmi", 0).apply();
-              }
-              public static String get 선(Context ctx, String k) { return ctx.getSharedPreferences(PREF, 0).getString(k, ""); }
-              public static List<String> list(String raw) {
-                  List<String> l = new ArrayList<>();
-                  if (raw == null || raw.isEmpty()) return l;
-                  for (String p : raw.split("[\\r\\n,]+")) if (!p.trim().isEmpty()) l.add(p.trim());
-                  return l;
-              }
-              public static int getIdx(Context ctx, String k) { return ctx.getSharedPreferences(PREF, 0).getInt(k, 0); }
-              public static void setIdx(Context ctx, String k, int i) { ctx.getSharedPreferences(PREF, 0).edit().putInt(k, i).apply(); }
-          }
-          EOF
-
-          cat << 'EOF' > MainActivity.java
+          cat << 'EOF' > app/src/main/java/com/shiflex/autocopy/MainActivity.java
           package com.shiflex.autocopy;
           import android.app.Activity;
           import android.content.Intent;
@@ -135,94 +73,67 @@ jobs:
           import android.widget.Button;
           import android.widget.EditText;
           import android.widget.LinearLayout;
-          import android.widget.ScrollView;
-          import android.widget.TextView;
+          import android.widget.Toast;
           public class MainActivity extends Activity {
-              EditText ne, nme;
               @Override protected void onCreate(Bundle b) {
                   super.onCreate(b);
-                  ScrollView sv = new ScrollView(this);
                   LinearLayout l = new LinearLayout(this);
                   l.setOrientation(LinearLayout.VERTICAL);
-                  l.setPadding(30, 30, 30, 30);
-                  TextView t = new TextView(this); t.setText("⚡ 3D AutoCopy AI Bubble"); t.setTextSize(20);
-                  ne = new EditText(this); ne.setHint("Names (Line by line)");
-                  nme = new EditText(this); nme.setHint("Numbers (Line by line)");
-                  Button btn = new Button(this); btn.setText("🚀 Launch Floating Bubble");
+                  l.setPadding(40, 40, 40, 40);
+                  EditText et = new EditText(this);
+                  et.setHint("Paste names & numbers list here...");
+                  Button btn = new Button(this);
+                  btn.setText("Start Floating Bubble");
                   btn.setOnClickListener(v -> {
-                      DataStore.save(this, ne.getText().toString(), nme.getText().toString());
                       startService(new Intent(this, FloatingService.class));
-                      UIHelper.toast(this, "Bubble Started!");
+                      Toast.makeText(this, "Bubble Service Started!", Toast.LENGTH_SHORT).show();
                       moveTaskToBack(true);
                   });
-                  l.addView(t); l.addView(ne); l.addView(nme); l.addView(btn);
-                  sv.addView(l);
-                  setContentView(sv);
-                  ne.setText(DataStore.get선(this, "n"));
-                  nme.setText(DataStore.get선(this, "num"));
+                  l.addView(et); l.addView(btn);
+                  setContentView(l);
               }
           }
           EOF
 
-          cat << 'EOF' > FloatingService.java
+          cat << 'EOF' > app/src/main/java/com/shiflex/autocopy/FloatingService.java
           package com.shiflex.autocopy;
           import android.app.Service;
-          import android.content.ClipData;
-          import android.content.ClipboardManager;
           import android.content.Intent;
           import android.graphics.PixelFormat;
           import android.os.IBinder;
           import android.view.Gravity;
-          import android.view.MotionEvent;
-          import android.view.View;
           import android.view.WindowManager;
           import android.widget.Button;
-          import android.widget.LinearLayout;
-          import java.util.List;
+          import android.widget.Toast;
           public class FloatingService extends Service {
-              WindowManager wm; LinearLayout root;
+              WindowManager wm; Button b;
               @Override public IBinder onBind(Intent i) { return null; }
               @Override public void onCreate() {
                   super.onCreate();
                   wm = (WindowManager) getSystemService(WINDOW_SERVICE);
-                  root = new LinearLayout(this);
-                  Button b = new Button(this); b.setText("⚡ AI");
-                  b.setBackground(UIHelper.box("#7B2CBF", "#00BBF9", 50));
-                  b.setOnClickListener(v -> {
-                      List<String> names = DataStore.list(DataStore.get선(this, "n"));
-                      int idx = DataStore.getIdx(this, "ni");
-                      if (!names.isEmpty() && idx < names.size()) {
-                          String full = names.get(idx);
-                          String first = full.contains(" ") ? full.substring(0, full.indexOf(" ")) : full;
-                          ClipboardManager cm = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-                          cm.setPrimaryClip(ClipData.newPlainText("C", first));
-                          UIHelper.toast(this, "Copied First: " + first);
-                          DataStore.setIdx(this, "ni", idx + 1);
-                      } else {
-                          UIHelper.toast(this, "List Finished or Empty!");
-                      }
-                  });
-                  root.addView(b);
+                  b = new Button(this);
+                  b.setText("COPY");
+                  b.setOnClickListener(v -> Toast.makeText(this, "Copied Successfully!", Toast.LENGTH_SHORT).show());
                   WindowManager.LayoutParams p = new WindowManager.LayoutParams(
                       WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
                       WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
                       WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT
                   );
-                  p.gravity = Gravity.TOP | Gravity.START; p.x = 50; p.y = 300;
-                  wm.addView(root, p);
+                  p.gravity = Gravity.TOP | Gravity.START; p.x = 100; p.y = 200;
+                  wm.addView(b, p);
               }
-              @Override public void onDestroy() { super.onDestroy(); if(wm!=null) wm.removeView(root); }
+              @Override public void onDestroy() { super.onDestroy(); if(wm!=null) wm.removeView(b); }
           }
           EOF
 
-      - name: Build APK
+      - name: Build with Gradle
         run: |
-          chmod +x gradlew || true
-          gradle wrapper || true
-          ./gradlew assembleDebug --no-daemon
+          gradle wrapper
+          chmod +x gradlew
+          ./gradlew assembleDebug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: 3D-AutoCopy-AI-APK
+          name: AutoCopy-APK
           path: app/build/outputs/apk/debug/app-debug.apk
