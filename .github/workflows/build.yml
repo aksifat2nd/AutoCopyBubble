@@ -21,8 +21,12 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.4'
+
       - name: Generate Project Files & 3D Animated UI
-        shell: bash
         run: |
           mkdir -p app/src/main/java/com/shiflex/autocopy
           mkdir -p app/src/main/res/values
@@ -39,7 +43,7 @@ jobs:
                   mavenCentral()
               }
               dependencies {
-                  classpath 'com.android.tools.build:gradle:8.1.2'
+                  classpath 'com.android.tools.build:gradle:8.2.0'
               }
           }
           allprojects {
@@ -94,6 +98,7 @@ jobs:
               <application
                   android:allowBackup="true"
                   android:label="3D AutoCopy AI"
+                  android:icon="@android:drawable/sym_def_app_icon"
                   android:supportsRtl="true"
                   android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
                   <activity
@@ -276,8 +281,6 @@ jobs:
           package com.shiflex.autocopy;
 
           import android.app.Activity;
-          import android.content.ClipboardManager;
-          import android.content.Context;
           import android.content.Intent;
           import android.graphics.Color;
           import android.graphics.Typeface;
@@ -326,7 +329,6 @@ jobs:
                   statusLabel.setPadding(0, UIHelper.dp(this, 8), 0, UIHelper.dp(this, 16));
                   root.addView(statusLabel);
 
-                  // Name Box Section
                   TextView nameHeader = new TextView(this);
                   nameHeader.setText("👤 Name List (প্রতি লাইনে বা কমা দিয়ে পূর্ণ নাম দিন):");
                   nameHeader.setTextColor(Color.WHITE);
@@ -346,7 +348,6 @@ jobs:
                   boxLp.setMargins(0, UIHelper.dp(this, 8), 0, UIHelper.dp(this, 14));
                   root.addView(nameInput, boxLp);
 
-                  // Number Box Section
                   TextView numHeader = new TextView(this);
                   numHeader.setText("📱 Number List (প্রতি লাইনে বা কমা দিয়ে নাম্বার দিন):");
                   numHeader.setTextColor(Color.WHITE);
@@ -364,7 +365,6 @@ jobs:
                   numInput.setBackground(UIHelper.make3DBox("#162038", "#0F172A", "#00BBF9", 14, this));
                   root.addView(numInput, boxLp);
 
-                  // Save & Start Floating Bubble Button
                   Button startBtn = UIHelper.makeAnimatedButton(this, "🚀 SAVE & LAUNCH 3D BUBBLE", "#7B2CBF", "#3A0CA3", "#00F5D4", () -> {
                       DataStore.saveLists(this, nameInput.getText().toString(), numInput.getText().toString());
                       refreshStatus();
@@ -372,7 +372,6 @@ jobs:
                   });
                   root.addView(startBtn, boxLp);
 
-                  // Row for Reset & Clear
                   LinearLayout row = new LinearLayout(this);
                   row.setOrientation(LinearLayout.HORIZONTAL);
                   LinearLayout.LayoutParams halfLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
@@ -489,7 +488,6 @@ jobs:
                   rootLayout.setOrientation(LinearLayout.VERTICAL);
                   rootLayout.setGravity(Gravity.CENTER_HORIZONTAL);
 
-                  // 3D Floating Glowing Bubble Icon
                   bubbleIcon = new TextView(this);
                   bubbleIcon.setText("⚡AI");
                   bubbleIcon.setTextColor(Color.WHITE);
@@ -502,7 +500,6 @@ jobs:
                   bubbleIcon.setElevation(UIHelper.dp(this, 12));
                   UIHelper.pulseView(bubbleIcon);
 
-                  // Expanded 3D Popup Menu Card
                   menuCard = new LinearLayout(this);
                   menuCard.setOrientation(LinearLayout.VERTICAL);
                   int pad = UIHelper.dp(this, 12);
@@ -524,19 +521,15 @@ jobs:
                   );
                   btnLp.setMargins(0, UIHelper.dp(this, 4), 0, UIHelper.dp(this, 4));
 
-                  // 1. First Name Button
                   Button fNameBtn = UIHelper.makeAnimatedButton(this, "📋 First Name", "#3A0CA3", "#4361EE", "#00F5D4", this::copyFirstName);
                   menuCard.addView(fNameBtn, btnLp);
 
-                  // 2. Last Name Button
                   Button lNameBtn = UIHelper.makeAnimatedButton(this, "📋 Last Name (+Next)", "#7209B7", "#B5179E", "#FF9E00", this::copyLastName);
                   menuCard.addView(lNameBtn, btnLp);
 
-                  // 3. Number Button
                   Button numBtn = UIHelper.makeAnimatedButton(this, "📱 Copy Number", "#0077B6", "#00B4D8", "#90E0EF", this::copyNextNumber);
                   menuCard.addView(numBtn, btnLp);
 
-                  // Bottom Mini Controls: Reset & Close
                   LinearLayout miniRow = new LinearLayout(this);
                   miniRow.setOrientation(LinearLayout.HORIZONTAL);
                   LinearLayout.LayoutParams miniLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
@@ -692,8 +685,6 @@ jobs:
               private void updateBadge() {
                   List<String> names = DataStore.getCleanList(DataStore.getRawNames(this));
                   List<String> nums = DataStore.getCleanList(DataStore.getRawNumbers(this));
-                  int nIdx = Math.min(DataStore.getNameIdx(this) + 1, Math.max(names.size(), 1));
-                  int mIdx = Math.min(DataStore.getNumIdx(this) + 1, Math.max(nums.size(), 1));
                   counterBadge.setText("👤 Name: " + DataStore.getNameIdx(this) + "/" + names.size() + "  |  📱 Num: " + DataStore.getNumIdx(this) + "/" + nums.size());
               }
 
@@ -722,11 +713,13 @@ jobs:
           }
           EOF
 
+          sed -i 's/^          //' settings.gradle build.gradle gradle.properties app/build.gradle app/src/main/AndroidManifest.xml app/src/main/java/com/shiflex/autocopy/*.java
+
       - name: Build Debug APK
         run: |
-          gradle wrapper --gradle-version 8.2
+          gradle wrapper
           chmod +x gradlew
-          ./gradlew assembleDebug
+          ./gradlew assembleDebug --no-daemon
 
       - name: Upload Compiled 3D APK
         uses: actions/upload-artifact@v4
