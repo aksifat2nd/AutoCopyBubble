@@ -1,0 +1,735 @@
+name: Build 3D AutoCopy Bubble APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate Project Files & 3D Animated UI
+        shell: bash
+        run: |
+          mkdir -p app/src/main/java/com/shiflex/autocopy
+          mkdir -p app/src/main/res/values
+
+          cat << 'EOF' > settings.gradle
+          rootProject.name = "AutoCopyBubble"
+          include ':app'
+          EOF
+
+          cat << 'EOF' > build.gradle
+          buildscript {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.2'
+              }
+          }
+          allprojects {
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          EOF
+
+          cat << 'EOF' > gradle.properties
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          android.useAndroidX=true
+          EOF
+
+          cat << 'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+          }
+          android {
+              namespace 'com.shiflex.autocopy'
+              compileSdk 34
+              defaultConfig {
+                  applicationId "com.shiflex.autocopy"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildTypes {
+                  debug {
+                      minifyEnabled false
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          dependencies {
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+              <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+              <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+              <uses-permission android:name="android.permission.VIBRATE"/>
+
+              <application
+                  android:allowBackup="true"
+                  android:label="3D AutoCopy AI"
+                  android:supportsRtl="true"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:windowSoftInputMode="adjustResize">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+                  <service
+                      android:name=".FloatingService"
+                      android:enabled="true"
+                      android:exported="false"
+                      android:foregroundServiceType="specialUse"/>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/shiflex/autocopy/UIHelper.java
+          package com.shiflex.autocopy;
+
+          import android.animation.ObjectAnimator;
+          import android.animation.PropertyValuesHolder;
+          import android.content.Context;
+          import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
+          import android.os.Vibrator;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.animation.OvershootInterpolator;
+          import android.widget.Button;
+          import android.widget.Toast;
+
+          public class UIHelper {
+              public static GradientDrawable make3DBox(String startHex, String endHex, String strokeHex, int radiusDp, Context ctx) {
+                  GradientDrawable gd = new GradientDrawable(
+                      GradientDrawable.Orientation.TL_BR,
+                      new int[]{Color.parseColor(startHex), Color.parseColor(endHex)}
+                  );
+                  gd.setCornerRadius(dp(ctx, radiusDp));
+                  gd.setStroke(dp(ctx, 2), Color.parseColor(strokeHex));
+                  return gd;
+              }
+
+              public static Button makeAnimatedButton(Context ctx, String text, String c1, String c2, String borderHex, Runnable onClick) {
+                  Button btn = new Button(ctx);
+                  btn.setText(text);
+                  btn.setTextColor(Color.WHITE);
+                  btn.setTypeface(Typeface.DEFAULT_BOLD);
+                  btn.setAllCaps(false);
+                  btn.setBackground(make3DBox(c1, c2, borderHex, 14, ctx));
+                  btn.setElevation(dp(ctx, 8));
+                  btn.setPadding(dp(ctx, 12), dp(ctx, 10), dp(ctx, 12), dp(ctx, 10));
+
+                  btn.setOnTouchListener((v, event) -> {
+                      if (event.getAction() == MotionEvent.ACTION_DOWN) {
+                          v.animate().scaleX(0.88f).scaleY(0.88f).setDuration(90).start();
+                      } else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+                          v.animate().scaleX(1f).scaleY(1f).setInterpolator(new OvershootInterpolator(2.5f)).setDuration(220).start();
+                      }
+                      return false;
+                  });
+
+                  btn.setOnClickListener(v -> {
+                      vibrate(ctx, 35);
+                      if (onClick != null) onClick.run();
+                  });
+                  return btn;
+              }
+
+              public static void pulseView(View v) {
+                  ObjectAnimator pulse = ObjectAnimator.ofPropertyValuesHolder(
+                      v,
+                      PropertyValuesHolder.ofFloat("scaleX", 1f, 1.08f, 1f),
+                      PropertyValuesHolder.ofFloat("scaleY", 1f, 1.08f, 1f)
+                  );
+                  pulse.setDuration(1600);
+                  pulse.setRepeatCount(ObjectAnimator.INFINITE);
+                  pulse.start();
+              }
+
+              public static void popIn(View v) {
+                  v.setScaleX(0.4f);
+                  v.setScaleY(0.4f);
+                  v.setAlpha(0f);
+                  v.animate().scaleX(1f).scaleY(1f).alpha(1f)
+                      .setInterpolator(new OvershootInterpolator(1.8f))
+                      .setDuration(280).start();
+              }
+
+              public static void vibrate(Context ctx, int ms) {
+                  try {
+                      Vibrator vib = (Vibrator) ctx.getSystemService(Context.VIBRATOR_SERVICE);
+                      if (vib != null) vib.vibrate(ms);
+                  } catch (Exception ignored) {}
+              }
+
+              public static void showNeonToast(Context ctx, String msg, boolean isAlert) {
+                  Toast t = Toast.makeText(ctx.getApplicationContext(), msg, Toast.LENGTH_SHORT);
+                  t.setGravity(Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL, 0, dp(ctx, 90));
+                  t.show();
+              }
+
+              public static int dp(Context ctx, int val) {
+                  return (int) (val * ctx.getResources().getDisplayMetrics().density);
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/shiflex/autocopy/DataStore.java
+          package com.shiflex.autocopy;
+
+          import android.content.Context;
+          import android.content.SharedPreferences;
+          import java.util.ArrayList;
+          import java.util.List;
+
+          public class DataStore {
+              private static final String PREF = "AutoCopy3DPrefs";
+
+              public static void saveLists(Context ctx, String rawNames, String rawNumbers) {
+                  SharedPreferences sp = ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE);
+                  sp.edit()
+                      .putString("names", rawNames.trim())
+                      .putString("numbers", rawNumbers.trim())
+                      .putInt("nameIdx", 0)
+                      .putInt("numIdx", 0)
+                      .apply();
+              }
+
+              public static String getRawNames(Context ctx) {
+                  return ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString("names", "");
+              }
+
+              public static String getRawNumbers(Context ctx) {
+                  return ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getString("numbers", "");
+              }
+
+              public static List<String> getCleanList(String raw) {
+                  List<String> list = new ArrayList<>();
+                  if (raw == null || raw.trim().isEmpty()) return list;
+                  String[] parts = raw.split("[\\r\\n,]+");
+                  for (String p : parts) {
+                      String clean = p.trim();
+                      if (!clean.isEmpty()) list.add(clean);
+                  }
+                  return list;
+              }
+
+              public static int getNameIdx(Context ctx) {
+                  return ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getInt("nameIdx", 0);
+              }
+
+              public static void setNameIdx(Context ctx, int idx) {
+                  ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putInt("nameIdx", idx).apply();
+              }
+
+              public static int getNumIdx(Context ctx) {
+                  return ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).getInt("numIdx", 0);
+              }
+
+              public static void setNumIdx(Context ctx, int idx) {
+                  ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit().putInt("numIdx", idx).apply();
+              }
+
+              public static void resetCounters(Context ctx) {
+                  ctx.getSharedPreferences(PREF, Context.MODE_PRIVATE).edit()
+                      .putInt("nameIdx", 0)
+                      .putInt("numIdx", 0)
+                      .apply();
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/shiflex/autocopy/MainActivity.java
+          package com.shiflex.autocopy;
+
+          import android.app.Activity;
+          import android.content.ClipboardManager;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.graphics.Color;
+          import android.graphics.Typeface;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.provider.Settings;
+          import android.view.Gravity;
+          import android.view.ViewGroup;
+          import android.widget.Button;
+          import android.widget.EditText;
+          import android.widget.LinearLayout;
+          import android.widget.ScrollView;
+          import android.widget.TextView;
+          import java.util.List;
+
+          public class MainActivity extends Activity {
+              private EditText nameInput, numInput;
+              private TextView statusLabel;
+
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+
+                  ScrollView scroll = new ScrollView(this);
+                  scroll.setFillViewport(true);
+                  scroll.setBackground(UIHelper.make3DBox("#090D16", "#131B2E", "#00F5D4", 0, this));
+
+                  LinearLayout root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.VERTICAL);
+                  int pad = UIHelper.dp(this, 18);
+                  root.setPadding(pad, pad, pad, pad);
+
+                  TextView title = new TextView(this);
+                  title.setText("⚡ 3D AI AUTO-COPY BUBBLE");
+                  title.setTextSize(22);
+                  title.setTextColor(Color.parseColor("#00F5D4"));
+                  title.setTypeface(Typeface.DEFAULT_BOLD);
+                  title.setGravity(Gravity.CENTER);
+                  root.addView(title);
+
+                  statusLabel = new TextView(this);
+                  statusLabel.setTextSize(14);
+                  statusLabel.setTextColor(Color.parseColor("#E0AAFF"));
+                  statusLabel.setGravity(Gravity.CENTER);
+                  statusLabel.setPadding(0, UIHelper.dp(this, 8), 0, UIHelper.dp(this, 16));
+                  root.addView(statusLabel);
+
+                  // Name Box Section
+                  TextView nameHeader = new TextView(this);
+                  nameHeader.setText("👤 Name List (প্রতি লাইনে বা কমা দিয়ে পূর্ণ নাম দিন):");
+                  nameHeader.setTextColor(Color.WHITE);
+                  nameHeader.setTypeface(Typeface.DEFAULT_BOLD);
+                  root.addView(nameHeader);
+
+                  nameInput = new EditText(this);
+                  nameInput.setHint("যেমন:\nRahim Uddin\nKarim Hasan\nTanvir Ahmed");
+                  nameInput.setHintTextColor(Color.parseColor("#6C7A9C"));
+                  nameInput.setTextColor(Color.WHITE);
+                  nameInput.setMinLines(4);
+                  nameInput.setMaxLines(6);
+                  nameInput.setGravity(Gravity.TOP | Gravity.START);
+                  nameInput.setPadding(UIHelper.dp(this, 12), UIHelper.dp(this, 12), UIHelper.dp(this, 12), UIHelper.dp(this, 12));
+                  nameInput.setBackground(UIHelper.make3DBox("#162038", "#0F172A", "#7B2CBF", 14, this));
+                  LinearLayout.LayoutParams boxLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                  boxLp.setMargins(0, UIHelper.dp(this, 8), 0, UIHelper.dp(this, 14));
+                  root.addView(nameInput, boxLp);
+
+                  // Number Box Section
+                  TextView numHeader = new TextView(this);
+                  numHeader.setText("📱 Number List (প্রতি লাইনে বা কমা দিয়ে নাম্বার দিন):");
+                  numHeader.setTextColor(Color.WHITE);
+                  numHeader.setTypeface(Typeface.DEFAULT_BOLD);
+                  root.addView(numHeader);
+
+                  numInput = new EditText(this);
+                  numInput.setHint("যেমন:\n01700000001\n01800000002\n01900000003");
+                  numInput.setHintTextColor(Color.parseColor("#6C7A9C"));
+                  numInput.setTextColor(Color.parseColor("#00F5D4"));
+                  numInput.setMinLines(4);
+                  numInput.setMaxLines(6);
+                  numInput.setGravity(Gravity.TOP | Gravity.START);
+                  numInput.setPadding(UIHelper.dp(this, 12), UIHelper.dp(this, 12), UIHelper.dp(this, 12), UIHelper.dp(this, 12));
+                  numInput.setBackground(UIHelper.make3DBox("#162038", "#0F172A", "#00BBF9", 14, this));
+                  root.addView(numInput, boxLp);
+
+                  // Save & Start Floating Bubble Button
+                  Button startBtn = UIHelper.makeAnimatedButton(this, "🚀 SAVE & LAUNCH 3D BUBBLE", "#7B2CBF", "#3A0CA3", "#00F5D4", () -> {
+                      DataStore.saveLists(this, nameInput.getText().toString(), numInput.getText().toString());
+                      refreshStatus();
+                      launchBubbleService();
+                  });
+                  root.addView(startBtn, boxLp);
+
+                  // Row for Reset & Clear
+                  LinearLayout row = new LinearLayout(this);
+                  row.setOrientation(LinearLayout.HORIZONTAL);
+                  LinearLayout.LayoutParams halfLp = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f);
+                  halfLp.setMargins(UIHelper.dp(this, 4), UIHelper.dp(this, 4), UIHelper.dp(this, 4), UIHelper.dp(this, 10));
+
+                  Button resetBtn = UIHelper.makeAnimatedButton(this, "🔄 Reset (1 থেকে শুরু)", "#0096C7", "#03045E", "#00F5D4", () -> {
+                      DataStore.resetCounters(this);
+                      refreshStatus();
+                      UIHelper.showNeonToast(this, "কাউন্টার রিসেট হয়েছে! আবার ১ নাম্বার থেকে কপি হবে।", false);
+                  });
+
+                  Button clearBtn = UIHelper.makeAnimatedButton(this, "🗑️ Clear All List", "#D90429", "#6A040F", "#FF4D6D", () -> {
+                      nameInput.setText("");
+                      numInput.setText("");
+                      DataStore.saveLists(this, "", "");
+                      refreshStatus();
+                      UIHelper.showNeonToast(this, "সব লিস্ট মুছে ফেলা হয়েছে!", true);
+                  });
+
+                  row.addView(resetBtn, halfLp);
+                  row.addView(clearBtn, halfLp);
+                  root.addView(row);
+
+                  Button stopBtn = UIHelper.makeAnimatedButton(this, "🛑 STOP FLOATING BUBBLE", "#2B2D42", "#1A1B28", "#8D99AE", () -> {
+                      stopService(new Intent(this, FloatingService.class));
+                      UIHelper.showNeonToast(this, "ফ্লোটিং বাবল বন্ধ করা হয়েছে।", false);
+                  });
+                  root.addView(stopBtn, boxLp);
+
+                  nameInput.setText(DataStore.getRawNames(this));
+                  numInput.setText(DataStore.getRawNumbers(this));
+                  refreshStatus();
+
+                  scroll.addView(root);
+                  setContentView(scroll);
+              }
+
+              @Override
+              protected void onResume() {
+                  super.onResume();
+                  refreshStatus();
+              }
+
+              private void refreshStatus() {
+                  List<String> names = DataStore.getCleanList(DataStore.getRawNames(this));
+                  List<String> nums = DataStore.getCleanList(DataStore.getRawNumbers(this));
+                  int nIdx = DataStore.getNameIdx(this);
+                  int mIdx = DataStore.getNumIdx(this);
+                  statusLabel.setText("📊 Saved Names: " + names.size() + " (Done: " + nIdx + ")  |  Numbers: " + nums.size() + " (Done: " + mIdx + ")");
+              }
+
+              private void launchBubbleService() {
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                      UIHelper.showNeonToast(this, "অনুগ্রহ করে 'Display over other apps' পারমিশনটি অন করে দিন!", true);
+                      Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + getPackageName()));
+                      startActivity(intent);
+                      return;
+                  }
+                  Intent svc = new Intent(this, FloatingService.class);
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      startForegroundService(svc);
+                  } else {
+                      startService(svc);
+                  }
+                  UIHelper.showNeonToast(this, "⚡ 3D Bubble চালু হয়েছে! যেকোনো অ্যাপে গিয়ে বাবলে ক্লিক করুন।", false);
+                  moveTaskToBack(true);
+              }
+          }
+          EOF
+
+          cat << 'EOF' > app/src/main/java/com/shiflex/autocopy/FloatingService.java
+          package com.shiflex.autocopy;
+
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.Service;
+          import android.content.ClipData;
+          import android.content.ClipboardManager;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.graphics.Color;
+          import android.graphics.PixelFormat;
+          import android.graphics.Typeface;
+          import android.os.Build;
+          import android.os.IBinder;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.WindowManager;
+          import android.widget.Button;
+          import android.widget.LinearLayout;
+          import android.widget.TextView;
+          import java.util.List;
+
+          public class FloatingService extends Service {
+              private WindowManager wm;
+              private LinearLayout rootLayout;
+              private TextView bubbleIcon;
+              private LinearLayout menuCard;
+              private TextView counterBadge;
+              private WindowManager.LayoutParams params;
+
+              @Override
+              public IBinder onBind(Intent intent) { return null; }
+
+              @Override
+              public void onCreate() {
+                  super.onCreate();
+                  startMyForeground();
+
+                  wm = (WindowManager) getSystemService(WINDOW_SERVICE);
+                  rootLayout = new LinearLayout(this);
+                  rootLayout.setOrientation(LinearLayout.VERTICAL);
+                  rootLayout.setGravity(Gravity.CENTER_HORIZONTAL);
+
+                  // 3D Floating Glowing Bubble Icon
+                  bubbleIcon = new TextView(this);
+                  bubbleIcon.setText("⚡AI");
+                  bubbleIcon.setTextColor(Color.WHITE);
+                  bubbleIcon.setTypeface(Typeface.DEFAULT_BOLD);
+                  bubbleIcon.setTextSize(15);
+                  bubbleIcon.setGravity(Gravity.CENTER);
+                  int bSize = UIHelper.dp(this, 58);
+                  bubbleIcon.setLayoutParams(new LinearLayout.LayoutParams(bSize, bSize));
+                  bubbleIcon.setBackground(UIHelper.make3DBox("#7B2CBF", "#00BBF9", "#00F5D4", 30, this));
+                  bubbleIcon.setElevation(UIHelper.dp(this, 12));
+                  UIHelper.pulseView(bubbleIcon);
+
+                  // Expanded 3D Popup Menu Card
+                  menuCard = new LinearLayout(this);
+                  menuCard.setOrientation(LinearLayout.VERTICAL);
+                  int pad = UIHelper.dp(this, 12);
+                  menuCard.setPadding(pad, pad, pad, pad);
+                  menuCard.setBackground(UIHelper.make3DBox("#10172A", "#1E1B4B", "#00F5D4", 18, this));
+                  menuCard.setElevation(UIHelper.dp(this, 16));
+                  menuCard.setVisibility(View.GONE);
+
+                  counterBadge = new TextView(this);
+                  counterBadge.setTextColor(Color.parseColor("#00F5D4"));
+                  counterBadge.setTypeface(Typeface.DEFAULT_BOLD);
+                  counterBadge.setTextSize(12);
+                  counterBadge.setGravity(Gravity.CENTER);
+                  counterBadge.setPadding(0, 0, 0, UIHelper.dp(this, 8));
+                  menuCard.addView(counterBadge);
+
+                  LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(
+                      UIHelper.dp(this, 185), LinearLayout.LayoutParams.WRAP_CONTENT
+                  );
+                  btnLp.setMargins(0, UIHelper.dp(this, 4), 0, UIHelper.dp(this, 4));
+
+                  // 1. First Name Button
+                  Button fNameBtn = UIHelper.makeAnimatedButton(this, "📋 First Name", "#3A0CA3", "#4361EE", "#00F5D4", this::copyFirstName);
+                  menuCard.addView(fNameBtn, btnLp);
+
+                  // 2. Last Name Button
+                  Button lNameBtn = UIHelper.makeAnimatedButton(this, "📋 Last Name (+Next)", "#7209B7", "#B5179E", "#FF9E00", this::copyLastName);
+                  menuCard.addView(lNameBtn, btnLp);
+
+                  // 3. Number Button
+                  Button numBtn = UIHelper.makeAnimatedButton(this, "📱 Copy Number", "#0077B6", "#00B4D8", "#90E0EF", this::copyNextNumber);
+                  menuCard.addView(numBtn, btnLp);
+
+                  // Bottom Mini Controls: Reset & Close
+                  LinearLayout miniRow = new LinearLayout(this);
+                  miniRow.setOrientation(LinearLayout.HORIZONTAL);
+                  LinearLayout.LayoutParams miniLp = new LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f);
+                  miniLp.setMargins(UIHelper.dp(this, 3), UIHelper.dp(this, 6), UIHelper.dp(this, 3), 0);
+
+                  Button resetMini = UIHelper.makeAnimatedButton(this, "🔄 Reset", "#FF9F1C", "#E71D36", "#FFFFFF", () -> {
+                      DataStore.resetCounters(this);
+                      updateBadge();
+                      UIHelper.showNeonToast(this, "🔄 রিসেট সম্পন্ন! আবার ১ নাম্বার থেকে কপি হবে।", false);
+                  });
+
+                  Button closeMini = UIHelper.makeAnimatedButton(this, "➖ Hide", "#334155", "#1E293B", "#94A3B8", () -> {
+                      menuCard.setVisibility(View.GONE);
+                  });
+
+                  miniRow.addView(resetMini, miniLp);
+                  miniRow.addView(closeMini, miniLp);
+                  menuCard.addView(miniRow);
+
+                  rootLayout.addView(bubbleIcon);
+                  rootLayout.addView(menuCard);
+
+                  int layoutFlag = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                      ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                      : WindowManager.LayoutParams.TYPE_PHONE;
+
+                  params = new WindowManager.LayoutParams(
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      WindowManager.LayoutParams.WRAP_CONTENT,
+                      layoutFlag,
+                      WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                      PixelFormat.TRANSLUCENT
+                  );
+                  params.gravity = Gravity.TOP | Gravity.START;
+                  params.x = 30;
+                  params.y = 280;
+
+                  setupDragAndClick();
+                  wm.addView(rootLayout, params);
+                  updateBadge();
+              }
+
+              private void setupDragAndClick() {
+                  bubbleIcon.setOnTouchListener(new View.OnTouchListener() {
+                      private int initX, initY;
+                      private float touchX, touchY;
+                      private long downTime;
+
+                      @Override
+                      public boolean onTouch(View v, MotionEvent event) {
+                          switch (event.getAction()) {
+                              case MotionEvent.ACTION_DOWN:
+                                  initX = params.x;
+                                  initY = params.y;
+                                  touchX = event.getRawX();
+                                  touchY = event.getRawY();
+                                  downTime = System.currentTimeMillis();
+                                  v.animate().scaleX(0.85f).scaleY(0.85f).setDuration(80).start();
+                                  return true;
+
+                              case MotionEvent.ACTION_MOVE:
+                                  params.x = initX + (int) (event.getRawX() - touchX);
+                                  params.y = initY + (int) (event.getRawY() - touchY);
+                                  wm.updateViewLayout(rootLayout, params);
+                                  return true;
+
+                              case MotionEvent.ACTION_UP:
+                                  v.animate().scaleX(1f).scaleY(1f).setDuration(150).start();
+                                  if (System.currentTimeMillis() - downTime < 220 &&
+                                      Math.abs(event.getRawX() - touchX) < 25 &&
+                                      Math.abs(event.getRawY() - touchY) < 25) {
+                                      UIHelper.vibrate(FloatingService.this, 30);
+                                      if (menuCard.getVisibility() == View.VISIBLE) {
+                                          menuCard.setVisibility(View.GONE);
+                                      } else {
+                                          updateBadge();
+                                          menuCard.setVisibility(View.VISIBLE);
+                                          UIHelper.popIn(menuCard);
+                                      }
+                                  }
+                                  return true;
+                          }
+                          return false;
+                      }
+                  });
+              }
+
+              private void copyFirstName() {
+                  List<String> names = DataStore.getCleanList(DataStore.getRawNames(this));
+                  if (names.isEmpty()) {
+                      UIHelper.showNeonToast(this, "⚠️ নামের লিস্ট খালি! অ্যাপে ঢুকে নাম অ্যাড করুন।", true);
+                      return;
+                  }
+                  int idx = DataStore.getNameIdx(this);
+                  if (idx >= names.size()) {
+                      UIHelper.vibrate(this, 180);
+                      UIHelper.showNeonToast(this, "🎉 সবগুলো (" + names.size() + "টি) নাম কপি করা হয়ে গেছে! নতুন নাম দিন অথবা Reset চাপুন।", true);
+                      return;
+                  }
+                  String full = names.get(idx).trim();
+                  String first = full.contains(" ") ? full.substring(0, full.indexOf(" ")).trim() : full;
+                  copyToClip(first);
+                  UIHelper.showNeonToast(this, "✅ First Name Copied: " + first + " (" + (idx + 1) + "/" + names.size() + ")", false);
+                  updateBadge();
+              }
+
+              private void copyLastName() {
+                  List<String> names = DataStore.getCleanList(DataStore.getRawNames(this));
+                  if (names.isEmpty()) {
+                      UIHelper.showNeonToast(this, "⚠️ নামের লিস্ট খালি! অ্যাপে ঢুকে নাম অ্যাড করুন।", true);
+                      return;
+                  }
+                  int idx = DataStore.getNameIdx(this);
+                  if (idx >= names.size()) {
+                      UIHelper.vibrate(this, 180);
+                      UIHelper.showNeonToast(this, "🎉 সবগুলো (" + names.size() + "টি) নাম কপি করা হয়ে গেছে! নতুন নাম দিন অথবা Reset চাপুন।", true);
+                      return;
+                  }
+                  String full = names.get(idx).trim();
+                  String last = full.contains(" ") ? full.substring(full.indexOf(" ") + 1).trim() : full;
+                  copyToClip(last);
+                  DataStore.setNameIdx(this, idx + 1);
+                  UIHelper.showNeonToast(this, "✅ Last Name Copied: " + last + " (" + (idx + 1) + "/" + names.size() + ")", false);
+                  updateBadge();
+              }
+
+              private void copyNextNumber() {
+                  List<String> nums = DataStore.getCleanList(DataStore.getRawNumbers(this));
+                  if (nums.isEmpty()) {
+                      UIHelper.showNeonToast(this, "⚠️ নাম্বারের লিস্ট খালি! অ্যাপে ঢুকে নাম্বার অ্যাড করুন।", true);
+                      return;
+                  }
+                  int idx = DataStore.getNumIdx(this);
+                  if (idx >= nums.size()) {
+                      UIHelper.vibrate(this, 180);
+                      UIHelper.showNeonToast(this, "🎉 সবগুলো (" + nums.size() + "টি) নাম্বার কপি করা হয়ে গেছে! নতুন নাম্বার দিন অথবা Reset চাপুন।", true);
+                      return;
+                  }
+                  String num = nums.get(idx).trim();
+                  copyToClip(num);
+                  DataStore.setNumIdx(this, idx + 1);
+                  UIHelper.showNeonToast(this, "📱 Number Copied: " + num + " (" + (idx + 1) + "/" + nums.size() + ")", false);
+                  updateBadge();
+              }
+
+              private void copyToClip(String text) {
+                  ClipboardManager cb = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                  if (cb != null) {
+                      cb.setPrimaryClip(ClipData.newPlainText("AutoCopy3D", text));
+                  }
+              }
+
+              private void updateBadge() {
+                  List<String> names = DataStore.getCleanList(DataStore.getRawNames(this));
+                  List<String> nums = DataStore.getCleanList(DataStore.getRawNumbers(this));
+                  int nIdx = Math.min(DataStore.getNameIdx(this) + 1, Math.max(names.size(), 1));
+                  int mIdx = Math.min(DataStore.getNumIdx(this) + 1, Math.max(nums.size(), 1));
+                  counterBadge.setText("👤 Name: " + DataStore.getNameIdx(this) + "/" + names.size() + "  |  📱 Num: " + DataStore.getNumIdx(this) + "/" + nums.size());
+              }
+
+              private void startMyForeground() {
+                  String chId = "autocopy_3d_channel";
+                  if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                      NotificationChannel ch = new NotificationChannel(chId, "3D AutoCopy Bubble", NotificationManager.IMPORTANCE_LOW);
+                      NotificationManager nm = getSystemService(NotificationManager.class);
+                      if (nm != null) nm.createNotificationChannel(ch);
+                      Notification notif = new Notification.Builder(this, chId)
+                          .setContentTitle("⚡ 3D AutoCopy AI Active")
+                          .setContentText("Floating bubble is running on screen")
+                          .setSmallIcon(android.R.drawable.ic_menu_edit)
+                          .build();
+                      startForeground(101, notif);
+                  }
+              }
+
+              @Override
+              public void onDestroy() {
+                  super.onDestroy();
+                  if (wm != null && rootLayout != null) {
+                      wm.removeView(rootLayout);
+                  }
+              }
+          }
+          EOF
+
+      - name: Build Debug APK
+        run: |
+          gradle wrapper --gradle-version 8.2
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload Compiled 3D APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: 3D-AutoCopy-AI-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
